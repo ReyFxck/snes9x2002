@@ -1,0 +1,330 @@
+From 7f033ffccde6fcfb0c109fae1658451e06411db9 Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Sun, 4 Oct 2026 20:19:07 -0300
+Subject: [PATCH] ps2: bypass newlib for Android HostFS files
+
+---
+ libretro-common/include/vfs/vfs.h        |   4 +
+ libretro-common/vfs/vfs_implementation.c | 185 +++++++++++++++++++++--
+ 2 files changed, 175 insertions(+), 14 deletions(-)
+
+diff --git a/libretro-common/include/vfs/vfs.h b/libretro-common/include/vfs/vfs.h
+index 3b30895..5caaebb 100644
+--- a/libretro-common/include/vfs/vfs.h
++++ b/libretro-common/include/vfs/vfs.h
+@@ -84,6 +84,10 @@ struct libretro_vfs_implementation_file
+    char* orig_path;
+    uint8_t *mapped;
+    int fd;
++#if defined(PS2)
++   int ps2_file_xio_fd;
++   bool ps2_file_xio;
++#endif
+    unsigned hints;
+    enum vfs_scheme scheme;
+ };
+diff --git a/libretro-common/vfs/vfs_implementation.c b/libretro-common/vfs/vfs_implementation.c
+index 92d325b..fa35d7b 100644
+--- a/libretro-common/vfs/vfs_implementation.c
++++ b/libretro-common/vfs/vfs_implementation.c
+@@ -64,6 +64,24 @@
+ 
+ #include <fcntl.h>
+ 
++#if defined(PS2)
++/*
++ * Android HostFS URIs must bypass newlib: its POSIX shim rewrites
++ * "host:content://..." to "/content:/..." before the request reaches
++ * NetherSX2.  This is intentionally limited to the PS2 HostFS fallback.
++ */
++#ifndef NEWLIB_PORT_AWARE
++#define RETRO_VFS_DEFINED_NEWLIB_PORT_AWARE
++#define NEWLIB_PORT_AWARE
++#endif
++#include <io_common.h>
++#include <fileXio_rpc.h>
++#ifdef RETRO_VFS_DEFINED_NEWLIB_PORT_AWARE
++#undef NEWLIB_PORT_AWARE
++#undef RETRO_VFS_DEFINED_NEWLIB_PORT_AWARE
++#endif
++#endif
++
+ /* TODO: Some things are duplicated but I'm really afraid of breaking other platforms by touching this */
+ #if defined(VITA)
+ #  include <psp2/io/fcntl.h>
+@@ -265,6 +283,51 @@ static const char *retro_vfs_ps2_normalize_host_path(
+ 
+ #define RFILE_HINT_UNBUFFERED (1 << 8)
+ 
++#if defined(PS2)
++static int retro_vfs_ps2_file_xio_flags(unsigned mode)
++{
++   switch (mode)
++   {
++      case RETRO_VFS_FILE_ACCESS_READ:
++         return FIO_O_RDONLY;
++      case RETRO_VFS_FILE_ACCESS_WRITE:
++         return FIO_O_WRONLY | FIO_O_CREAT | FIO_O_TRUNC;
++      case RETRO_VFS_FILE_ACCESS_READ_WRITE:
++         return FIO_O_RDWR | FIO_O_CREAT | FIO_O_TRUNC;
++      case RETRO_VFS_FILE_ACCESS_WRITE | RETRO_VFS_FILE_ACCESS_UPDATE_EXISTING:
++      case RETRO_VFS_FILE_ACCESS_READ_WRITE | RETRO_VFS_FILE_ACCESS_UPDATE_EXISTING:
++         return FIO_O_RDWR;
++      default:
++         return -1;
++   }
++}
++
++static bool retro_vfs_ps2_file_xio_open(
++      libretro_vfs_implementation_file *stream, const char *path,
++      unsigned mode, char *hostfs_path, size_t hostfs_path_size)
++{
++   int flags = retro_vfs_ps2_file_xio_flags(mode);
++   int fd;
++
++   if (flags < 0)
++      return false;
++
++   /* Match SNESticle Revive: first try the guest spelling directly, then
++    * retry the encoded SAF sibling URI derived from the boot ELF. */
++   fd = fileXioOpen(path, flags, 0);
++   if (fd < 0 && frontend_ps2_build_hostfs_path(path, hostfs_path,
++            hostfs_path_size))
++      fd = fileXioOpen(hostfs_path, flags, 0);
++
++   if (fd < 0)
++      return false;
++
++   stream->ps2_file_xio_fd = fd;
++   stream->ps2_file_xio    = true;
++   return true;
++}
++#endif
++
+ int64_t retro_vfs_file_seek_internal(
+       libretro_vfs_implementation_file *stream,
+       int64_t offset, int whence)
+@@ -274,6 +337,15 @@ int64_t retro_vfs_file_seek_internal(
+    if (!stream)
+       return -1;
+ 
++#if defined(PS2)
++   if (stream->ps2_file_xio)
++   {
++      if (offset < INT32_MIN || offset > INT32_MAX)
++         return -1;
++      return fileXioLseek(stream->ps2_file_xio_fd, (int)offset, whence);
++   }
++#endif
++
+    if ((stream->hints & RFILE_HINT_UNBUFFERED) == 0)
+    {
+ #ifdef HAVE_CDROM
+@@ -370,6 +442,10 @@ libretro_vfs_implementation_file *retro_vfs_file_open_impl(
+       return NULL;
+ 
+    stream->fd                     = 0;
++#if defined(PS2)
++   stream->ps2_file_xio_fd        = -1;
++   stream->ps2_file_xio           = false;
++#endif
+    stream->hints                  = hints;
+    stream->size                   = 0;
+    stream->buf                    = NULL;
+@@ -543,12 +619,15 @@ libretro_vfs_implementation_file *retro_vfs_file_open_impl(
+          default:
+             fp = (FILE*)fopen_utf8(path, mode_str);
+ #if defined(PS2)
+-            if (!fp && is_hostfs_path &&
+-                frontend_ps2_build_hostfs_path(path, hostfs_path,
+-                   sizeof(hostfs_path)))
+-               fp = (FILE*)fopen_utf8(hostfs_path, mode_str);
++            if (!fp && is_hostfs_path)
++               retro_vfs_ps2_file_xio_open(stream, path, mode,
++                     hostfs_path, sizeof(hostfs_path));
++#endif
++            if (!fp
++#if defined(PS2)
++                  && !stream->ps2_file_xio
+ #endif
+-            if (!fp)
++               )
+             {
+ #ifdef IOS
+                if (errno == EEXIST)
+@@ -631,17 +710,20 @@ libretro_vfs_implementation_file *retro_vfs_file_open_impl(
+ #else
+                stream->fd          = open(path, flags, 0);
+ #if defined(PS2)
+-               if (stream->fd == -1 && is_hostfs_path &&
+-                   frontend_ps2_build_hostfs_path(path, hostfs_path,
+-                      sizeof(hostfs_path)))
+-                  stream->fd       = open(hostfs_path, flags, 0);
++               if (stream->fd == -1 && is_hostfs_path)
++                  retro_vfs_ps2_file_xio_open(stream, path, mode,
++                        hostfs_path, sizeof(hostfs_path));
+ #endif
+ #endif
+             }
+             break;
+       }
+ 
+-      if (stream->fd == -1)
++      if (stream->fd == -1
++#if defined(PS2)
++            && !stream->ps2_file_xio
++#endif
++         )
+          goto error;
+ 
+ #ifdef HAVE_MMAP
+@@ -702,6 +784,11 @@ int retro_vfs_file_close_impl(libretro_vfs_implementation_file *stream)
+    }
+ #endif
+ 
++#if defined(PS2)
++   if (stream->ps2_file_xio)
++      fileXioClose(stream->ps2_file_xio_fd);
++   else
++#endif
+    if ((stream->hints & RFILE_HINT_UNBUFFERED) == 0)
+    {
+       if (stream->fp)
+@@ -735,6 +822,10 @@ end:
+ 
+ int retro_vfs_file_error_impl(libretro_vfs_implementation_file *stream)
+ {
++#if defined(PS2)
++   if (stream && stream->ps2_file_xio)
++      return 0;
++#endif
+ #ifdef HAVE_CDROM
+    if (stream->scheme == VFS_SCHEME_CDROM)
+       return retro_vfs_file_error_cdrom(stream);
+@@ -774,6 +865,11 @@ int64_t retro_vfs_file_tell_impl(libretro_vfs_implementation_file *stream)
+    if (!stream)
+       return -1;
+ 
++#if defined(PS2)
++   if (stream->ps2_file_xio)
++      return fileXioLseek(stream->ps2_file_xio_fd, 0, FIO_SEEK_CUR);
++#endif
++
+    if ((stream->hints & RFILE_HINT_UNBUFFERED) == 0)
+    {
+ #ifdef HAVE_CDROM
+@@ -814,6 +910,14 @@ int64_t retro_vfs_file_read_impl(libretro_vfs_implementation_file *stream,
+    if (!stream || !s)
+       return -1;
+ 
++#if defined(PS2)
++   if (stream->ps2_file_xio)
++   {
++      int read_size = len > INT32_MAX ? INT32_MAX : (int)len;
++      return fileXioRead(stream->ps2_file_xio_fd, s, read_size);
++   }
++#endif
++
+    if ((stream->hints & RFILE_HINT_UNBUFFERED) == 0)
+    {
+ #ifdef HAVE_CDROM
+@@ -849,6 +953,19 @@ int64_t retro_vfs_file_write_impl(libretro_vfs_implementation_file *stream, cons
+    if (!stream)
+       return -1;
+ 
++#if defined(PS2)
++   if (stream->ps2_file_xio)
++   {
++      int write_size = len > INT32_MAX ? INT32_MAX : (int)len;
++
++      pos = retro_vfs_file_tell_impl(stream);
++      ret = fileXioWrite(stream->ps2_file_xio_fd, s, write_size);
++      if (ret != -1 && pos + ret > stream->size)
++         stream->size = pos + ret;
++      return ret;
++   }
++#endif
++
+    if ((stream->hints & RFILE_HINT_UNBUFFERED) == 0)
+    {
+       pos = retro_vfs_file_tell_impl(stream);
+@@ -875,6 +992,10 @@ int64_t retro_vfs_file_write_impl(libretro_vfs_implementation_file *stream, cons
+ 
+ int retro_vfs_file_flush_impl(libretro_vfs_implementation_file *stream)
+ {
++#if defined(PS2)
++   if (stream && stream->ps2_file_xio)
++      return 0;
++#endif
+    if (stream && fflush(stream->fp) == 0)
+       return 0;
+    return -1;
+@@ -1172,11 +1293,27 @@ int retro_vfs_stat_impl(const char *path, int32_t *size)
+       if (stat(path, &stat_buf) < 0)
+ #if defined(PS2)
+       {
+-         if (!string_starts_with(path, "host:") ||
+-             !frontend_ps2_build_hostfs_path(path, hostfs_path,
+-                sizeof(hostfs_path)) ||
+-             stat(hostfs_path, &stat_buf) < 0)
++         iox_stat_t file_xio_stat;
++         int file_xio_result;
++
++         if (!string_starts_with(path, "host:"))
++            return 0;
++
++         file_xio_result = fileXioGetStat(path, &file_xio_stat);
++         if (file_xio_result < 0 &&
++             frontend_ps2_build_hostfs_path(path, hostfs_path,
++                sizeof(hostfs_path)))
++            file_xio_result = fileXioGetStat(hostfs_path, &file_xio_stat);
++
++         if (file_xio_result < 0)
+             return 0;
++
++         if (size)
++            *size = (int32_t)file_xio_stat.size;
++
++         if (FIO_S_ISDIR(file_xio_stat.mode))
++            ret |= RETRO_VFS_STAT_IS_DIRECTORY;
++         return ret;
+       }
+ #else
+          return 0;
+@@ -1303,6 +1440,9 @@ struct libretro_vfs_implementation_dir
+ #else
+    DIR *directory;
+    const struct dirent *entry;
++#if defined(PS2)
++   char entry_name[PATH_MAX_LENGTH];
++#endif
+ #endif
+ #if defined(ANDROID) && defined(HAVE_SAF)
+    libretro_vfs_implementation_saf_dir *saf_directory;
+@@ -1498,6 +1638,23 @@ const char *retro_vfs_dirent_get_name_impl(libretro_vfs_implementation_dir *rdir
+ #else
+       if (!rdir || !rdir->entry)
+          return NULL;
++#if defined(PS2)
++      if (rdir->orig_path && string_starts_with(rdir->orig_path, "host:"))
++      {
++         const char *scan;
++         const char *leaf = rdir->entry->d_name;
++
++         /* NetherSX2 may expose a host-rooted name (for example
++          * "primary:Ps2/game.zip") for an entry that is already a child of
++          * host:.  Only the final component belongs in a guest-side path. */
++         for (scan = leaf; *scan; scan++)
++            if (*scan == '/' || *scan == '\\')
++               leaf = scan + 1;
++
++         strlcpy(rdir->entry_name, leaf, sizeof(rdir->entry_name));
++         return rdir->entry_name;
++      }
++#endif
+       return rdir->entry->d_name;
+ #endif
+    }
+-- 
+2.51.1
+
