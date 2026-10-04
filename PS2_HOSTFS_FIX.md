@@ -13,9 +13,12 @@ Snes9x 2002 core statically linked.
    reports `No Cores Available`, even though Snes9x 2002 is linked.
 4. NetherSX2 can reject `host:/file` as an absolute path outside the ELF
    directory, producing `Could not read content from file`.
-5. On Android SAF storage, some NetherSX2 builds still reject a relative
-   `host:file` open. The working fallback is the fully encoded sibling
-   `content://` document URI derived from the URI that launched the ELF.
+5. On Android SAF storage, some NetherSX2 builds require the fully encoded
+   sibling `content://` document URI derived from the URI that launched the
+   ELF.
+6. PS2SDK newlib rewrites `host:content://...` into the invalid
+   `/content:/...` spelling before the request reaches NetherSX2. The SAF
+   retry must therefore use the direct `fileXio` API.
 
 ## Patches
 
@@ -25,12 +28,15 @@ Snes9x 2002 core statically linked.
   linked Snes9x 2002 core.
 - `0004` normalizes PS2 HostFS file and stat paths from `host:/path` to
   `host:path`.
-- `0005` records the ELF's Android SAF URI and retries failed HostFS file,
-  stat and directory operations through an encoded sibling document URI. It
-  also keeps the PS2 frontend working directory at `host:` instead of the
-  invalid `/content:/...` spelling.
+- `0005` records the ELF's Android SAF URI and builds an encoded sibling
+  document URI for failed HostFS operations. It also keeps the PS2 frontend
+  working directory at `host:` instead of the invalid `/content:/...`
+  spelling.
+- `0006` keeps a direct `fileXioOpen` descriptor in the VFS for seek, read,
+  write and close operations, uses `fileXioGetStat` for the SAF retry, and
+  strips host-root prefixes such as `primary:Ps2/` from directory entries.
 
-The `0005` fallback follows the HostFS strategy already used by
+The `0005` and `0006` fallbacks follow the HostFS strategy already used by
 SNESticleRevive. All HostFS workarounds are limited to PS2 `host:` and do not
 change USB, memory-card or HDD browsing.
 
@@ -44,7 +50,10 @@ repository and the official PS2DEV prebuilt toolchain.
 
 ## Device test
 
-Place the test ELF and ROM in the same Android SAF folder. Test an uncompressed
-`.sfc` or `.smc` first, followed by a `.zip`. Both paths should load with
-the linked Snes9x 2002 core without opening Suggested Cores or showing
-`Could not read content from file`.
+Place the V5 test ELF and ROM in the same Android SAF folder. Test an
+uncompressed `.sfc` or `.smc` first, followed by a `.zip`. Both paths
+should load with the linked Snes9x 2002 core without opening Suggested Cores or
+showing `Could not read content from file`.
+
+If a ROM still fails, capture a fresh NetherSX2 emulation log. A working V5
+path must no longer show the SAF retry rewritten as `/content:/...`.
