@@ -1,0 +1,48 @@
+From 4a1747a6c47117b947d86b0c0f49b41c0533da81 Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Sun, 4 Oct 2026 17:31:00 -0300
+Subject: [PATCH 1/2] ps2: verify HostFS directory entries before trusting
+ d_type
+
+---
+ libretro-common/vfs/vfs_implementation.c | 23 +++++++++++++++++++++++
+ 1 file changed, 23 insertions(+)
+
+diff --git a/libretro-common/vfs/vfs_implementation.c b/libretro-common/vfs/vfs_implementation.c
+index 5665bef..4dab22f 100644
+--- a/libretro-common/vfs/vfs_implementation.c
++++ b/libretro-common/vfs/vfs_implementation.c
+@@ -1430,7 +1430,30 @@ bool retro_vfs_dirent_is_dir_impl(libretro_vfs_implementation_dir *rdir)
+ #if defined(DT_DIR)
+       const struct dirent *entry = (const struct dirent*)rdir->entry;
+       if (entry->d_type == DT_DIR)
++      {
++#if defined(PS2)
++         /*
++          * Some PS2 HostFS implementations report every entry as DT_DIR.
++          * Trusting d_type in that case makes regular files impossible to
++          * select: the menu attempts to enter a ROM as a directory and then
++          * reports "Directory Not Found".  dopen() still distinguishes real
++          * directories from files, so probe only suspicious host: entries.
++          */
++         if (string_starts_with(rdir->orig_path, "host:"))
++         {
++            DIR *directory;
++            char path[PATH_MAX_LENGTH];
++
++            fill_pathname_join_special(path, rdir->orig_path,
++                  retro_vfs_dirent_get_name_impl(rdir), sizeof(path));
++            if (!(directory = opendir(path)))
++               return false;
++
++            closedir(directory);
++         }
++#endif
+          return true;
++      }
+       /* This can happen on certain file systems. */
+       if (!(entry->d_type == DT_UNKNOWN || entry->d_type == DT_LNK))
+          return false;
+-- 
+2.51.1
+
