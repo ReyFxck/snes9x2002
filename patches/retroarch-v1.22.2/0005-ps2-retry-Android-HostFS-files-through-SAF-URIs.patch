@@ -1,0 +1,296 @@
+From ad04e7b642c7a26f8b288bfda94c2936e4314138 Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Sun, 4 Oct 2026 20:04:00 -0300
+Subject: [PATCH] ps2: retry Android HostFS files through SAF URIs
+
+---
+ frontend/drivers/platform_ps2.c          | 85 +++++++++++++++++++++++-
+ libretro-common/vfs/vfs_implementation.c | 64 ++++++++++++++++--
+ 2 files changed, 144 insertions(+), 5 deletions(-)
+
+diff --git a/frontend/drivers/platform_ps2.c b/frontend/drivers/platform_ps2.c
+index 12d3832..2d318d6 100644
+--- a/frontend/drivers/platform_ps2.c
++++ b/frontend/drivers/platform_ps2.c
+@@ -52,11 +52,89 @@
+ 
+ static enum frontend_fork ps2_fork_mode      = FRONTEND_FORK_NONE;
+ static char cwd[FILENAME_MAX]                = {0};
++static char ps2_boot_path[PATH_MAX_LENGTH]   = {0};
+ static char mountString[10]                  = {0};
+ static char mountPoint[50]                   = {0};
+ static enum HDD_MOUNT_STATUS hddMountStatus  = HDD_MOUNT_INIT_STATUS_NOT_READY;
+ static enum HDD_INIT_STATUS hddStatus        = HDD_INIT_STATUS_UNKNOWN;
+ 
++/*
++ * Android SAF-backed HostFS can enumerate host: while rejecting relative
++ * opens.  Keep the content:// URI used to launch the ELF and rebuild an
++ * encoded sibling document URI when the VFS needs to retry a host: file.
++ */
++bool frontend_ps2_build_hostfs_path(const char *guest_path,
++      char *output, size_t output_size)
++{
++   static const char hex[] = "0123456789ABCDEF";
++   const char *uri;
++   const char *separator = NULL;
++   const char *relative;
++   const char *scan;
++   size_t root_length;
++   size_t position;
++   int written;
++
++   if (!guest_path || !output || output_size == 0 ||
++       !string_starts_with(guest_path, "host:") ||
++       string_starts_with(guest_path, "host:content://") ||
++       !string_starts_with(ps2_boot_path, "host:content://"))
++      return false;
++
++   uri = ps2_boot_path + sizeof("host:") - 1;
++   for (scan = uri; scan[0] && scan[1] && scan[2]; scan++)
++      if (scan[0] == '%' && scan[1] == '2' &&
++          (scan[2] == 'F' || scan[2] == 'f'))
++         separator = scan;
++
++   if (!separator)
++      return false;
++
++   root_length = (size_t)(separator - uri);
++   written = snprintf(output, output_size, "host:%.*s%%2F",
++         (int)root_length, uri);
++   if (written < 0 || (size_t)written >= output_size)
++      return false;
++
++   position = (size_t)written;
++   relative = guest_path + sizeof("host:") - 1;
++   while (*relative == '/' || *relative == '\\')
++      relative++;
++
++   for (; *relative; relative++)
++   {
++      unsigned char character = (unsigned char)*relative;
++
++      if ((character >= 'A' && character <= 'Z') ||
++          (character >= 'a' && character <= 'z') ||
++          (character >= '0' && character <= '9') ||
++          character == '-' || character == '_' ||
++          character == '.' || character == '~')
++      {
++         if (position + 1 >= output_size)
++            return false;
++         output[position++] = (char)character;
++      }
++      else
++      {
++         if (position + 3 >= output_size)
++            return false;
++         output[position++] = '%';
++         output[position++] = hex[(character >> 4) & 15];
++         output[position++] = hex[character & 15];
++      }
++   }
++
++   output[position] = '\0';
++   return true;
++}
++
++static void frontend_ps2_remember_boot_path(char *argv[])
++{
++   if (argv && argv[0] && argv[0][0])
++      strlcpy(ps2_boot_path, argv[0], sizeof(ps2_boot_path));
++}
++
+ static void create_path_names(void)
+ {
+    char user_path[FILENAME_MAX];
+@@ -260,6 +338,7 @@ static void poweroffHandler(void *arg)
+ static void frontend_ps2_get_env(int *argc, char *argv[],
+       void *args, void *params_data)
+ {
++   frontend_ps2_remember_boot_path(argv);
+    create_path_names();
+ 
+ #ifndef IS_SALAMANDER
+@@ -302,10 +381,13 @@ static void common_init_drivers(bool extra_drivers)
+    poweroffSetCallback(&poweroffHandler, NULL);
+ 
+    getcwd(cwd, sizeof(cwd));
++   if (string_starts_with(ps2_boot_path, "host:content://"))
++      strlcpy(cwd, "host:", sizeof(cwd));
+ #if !defined(IS_SALAMANDER) && !defined(DEBUG)
+    /* If it is not Salamander, we need to go one level
+     * up for setting the CWD. */
+-   path_parent_dir(cwd, strlen(cwd));
++   if (!string_is_equal(cwd, "host:"))
++      path_parent_dir(cwd, strlen(cwd));
+ #endif
+ 
+    mount_partition();
+@@ -517,6 +599,7 @@ static void frontend_ps2_process_args(int *argc, char *argv[])
+ #ifndef IS_SALAMANDER
+    /* Make sure active core path is set here. */
+    char path[PATH_MAX_LENGTH] = {0};
++   frontend_ps2_remember_boot_path(argv);
+    strlcpy(path, argv[0], sizeof(path));
+    if (path_is_valid(path))
+       path_set(RARCH_PATH_CORE, path);
+diff --git a/libretro-common/vfs/vfs_implementation.c b/libretro-common/vfs/vfs_implementation.c
+index fe654fc..92d325b 100644
+--- a/libretro-common/vfs/vfs_implementation.c
++++ b/libretro-common/vfs/vfs_implementation.c
+@@ -98,6 +98,9 @@
+ #include <encodings/utf.h>
+ 
+ #if defined(PS2)
++bool frontend_ps2_build_hostfs_path(const char *guest_path,
++      char *output, size_t output_size);
++
+ /*
+  * NetherSX2's HostFS treats the slash in "host:/path" as the start of an
+  * absolute path and rejects it for escaping the ELF directory.  ps2link-style
+@@ -109,10 +112,16 @@ static const char *retro_vfs_ps2_normalize_host_path(
+    const char *relative_path;
+    size_t prefix_length = sizeof("host:") - 1;
+ 
+-   if (!path || !string_starts_with(path, "host:/"))
++   if (!path)
++      return path;
++
++   if (string_starts_with(path, "host:/"))
++      relative_path = path + prefix_length;
++   else if (path[0] == '/' && !strchr(path, ':'))
++      relative_path = path;
++   else
+       return path;
+ 
+-   relative_path = path + prefix_length;
+    while (*relative_path == '/')
+       relative_path++;
+ 
+@@ -344,6 +353,8 @@ libretro_vfs_implementation_file *retro_vfs_file_open_impl(
+    const char                     *mode_str = NULL;
+ #if defined(PS2)
+    char                    normalized_path[PATH_MAX_LENGTH];
++   char                         hostfs_path[PATH_MAX_LENGTH];
++   bool                     is_hostfs_path = false;
+ #endif
+    libretro_vfs_implementation_file *stream =
+       (libretro_vfs_implementation_file*)
+@@ -352,6 +363,7 @@ libretro_vfs_implementation_file *retro_vfs_file_open_impl(
+ #if defined(PS2)
+    path = retro_vfs_ps2_normalize_host_path(path, normalized_path,
+          sizeof(normalized_path));
++   is_hostfs_path = path && string_starts_with(path, "host:");
+ #endif
+ 
+    if (!stream)
+@@ -529,7 +541,14 @@ libretro_vfs_implementation_file *retro_vfs_file_open_impl(
+ #endif
+ 
+          default:
+-            if (!(fp = (FILE*)fopen_utf8(path, mode_str)))
++            fp = (FILE*)fopen_utf8(path, mode_str);
++#if defined(PS2)
++            if (!fp && is_hostfs_path &&
++                frontend_ps2_build_hostfs_path(path, hostfs_path,
++                   sizeof(hostfs_path)))
++               fp = (FILE*)fopen_utf8(hostfs_path, mode_str);
++#endif
++            if (!fp)
+             {
+ #ifdef IOS
+                if (errno == EEXIST)
+@@ -611,6 +630,12 @@ libretro_vfs_implementation_file *retro_vfs_file_open_impl(
+ #endif
+ #else
+                stream->fd          = open(path, flags, 0);
++#if defined(PS2)
++               if (stream->fd == -1 && is_hostfs_path &&
++                   frontend_ps2_build_hostfs_path(path, hostfs_path,
++                      sizeof(hostfs_path)))
++                  stream->fd       = open(hostfs_path, flags, 0);
++#endif
+ #endif
+             }
+             break;
+@@ -1021,6 +1046,7 @@ int retro_vfs_stat_impl(const char *path, int32_t *size)
+    int ret                   = RETRO_VFS_STAT_IS_VALID;
+ #if defined(PS2)
+    char normalized_path[PATH_MAX_LENGTH];
++   char     hostfs_path[PATH_MAX_LENGTH];
+ 
+    path = retro_vfs_ps2_normalize_host_path(path, normalized_path,
+          sizeof(normalized_path));
+@@ -1144,7 +1170,17 @@ int retro_vfs_stat_impl(const char *path, int32_t *size)
+       struct stat stat_buf;
+ 
+       if (stat(path, &stat_buf) < 0)
++#if defined(PS2)
++      {
++         if (!string_starts_with(path, "host:") ||
++             !frontend_ps2_build_hostfs_path(path, hostfs_path,
++                sizeof(hostfs_path)) ||
++             stat(hostfs_path, &stat_buf) < 0)
++            return 0;
++      }
++#else
+          return 0;
++#endif
+ 
+       if (size)
+          *size = (int32_t)stat_buf.st_size;
+@@ -1289,6 +1325,10 @@ static bool dirent_check_err(libretro_vfs_implementation_dir *rdir)
+ libretro_vfs_implementation_dir *retro_vfs_opendir_impl(
+       const char *name, bool include_hidden)
+ {
++#if defined(PS2)
++   char normalized_path[PATH_MAX_LENGTH];
++   char     hostfs_path[PATH_MAX_LENGTH];
++#endif
+ #if defined(_WIN32)
+    char path_buf[1024];
+    size_t _len;
+@@ -1304,6 +1344,11 @@ libretro_vfs_implementation_dir *retro_vfs_opendir_impl(
+    if (!name || (*name == 0))
+       return NULL;
+ 
++#if defined(PS2)
++   name = retro_vfs_ps2_normalize_host_path(name, normalized_path,
++         sizeof(normalized_path));
++#endif
++
+    /*Allocate RDIR struct. Tidied later with retro_closedir*/
+    if (!(rdir = (libretro_vfs_implementation_dir*)
+             calloc(1, sizeof(*rdir))))
+@@ -1376,6 +1421,12 @@ libretro_vfs_implementation_dir *retro_vfs_opendir_impl(
+    rdir->error           = sysFsOpendir(name, &rdir->directory);
+ #else
+    rdir->directory       = opendir(name);
++#if defined(PS2)
++   if (!rdir->directory && string_starts_with(name, "host:") &&
++       frontend_ps2_build_hostfs_path(name, hostfs_path,
++          sizeof(hostfs_path)))
++      rdir->directory    = opendir(hostfs_path);
++#endif
+    rdir->entry           = NULL;
+ #endif
+ 
+@@ -1488,10 +1539,15 @@ bool retro_vfs_dirent_is_dir_impl(libretro_vfs_implementation_dir *rdir)
+          {
+             DIR *directory;
+             char path[PATH_MAX_LENGTH];
++            char hostfs_path[PATH_MAX_LENGTH];
+ 
+             fill_pathname_join_special(path, rdir->orig_path,
+                   retro_vfs_dirent_get_name_impl(rdir), sizeof(path));
+-            if (!(directory = opendir(path)))
++            directory = opendir(path);
++            if (!directory && frontend_ps2_build_hostfs_path(path,
++                   hostfs_path, sizeof(hostfs_path)))
++               directory = opendir(hostfs_path);
++            if (!directory)
+                return false;
+ 
+             closedir(directory);
+-- 
+2.51.1
+
