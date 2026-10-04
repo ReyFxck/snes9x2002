@@ -1,0 +1,35 @@
+From a7837c1246581eb7951727b35e503b877f0f91ec Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Sun, 4 Oct 2026 19:41:02 -0300
+Subject: [PATCH] ps2: load content with the linked static core
+
+---
+ Makefile.ps2 | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/Makefile.ps2 b/Makefile.ps2
+index be205a4..33ac1f0 100644
+--- a/Makefile.ps2
++++ b/Makefile.ps2
+@@ -9,6 +9,7 @@ HAVE_THREADS       = 0
+ MUTE_WARNINGS      = 1
+ WHOLE_ARCHIVE_LINK = 0
+ HAVE_STATIC_DUMMY ?= 0
++LOAD_WITHOUT_CORE_INFO ?= 1
+ PS2_IP = 192.168.1.10
+ 
+ ifeq ($(DEBUG), 1)
+@@ -28,6 +29,10 @@ else
+   LIBS += -lretro_ps2
+ endif
+ 
++ifeq ($(LOAD_WITHOUT_CORE_INFO),1)
++  DEFINES += -DLOAD_WITHOUT_CORE_INFO
++endif
++
+ ifeq ($(SCREEN_DEBUG), 1)
+ LIBS += -ldebug
+ DEFINES += -DSCREEN_DEBUG
+-- 
+2.51.1
+
