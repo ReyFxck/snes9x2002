@@ -11,6 +11,8 @@ Snes9x 2002 core statically linked.
 2. RetroArch 1.22.2 uses older PS2DEV USB-driver and gsKit callback APIs.
 3. After selecting a ROM, the PS2 static build opens `Suggested Cores` and
    reports `No Cores Available`, even though Snes9x 2002 is linked.
+4. NetherSX2 can reject `host:/file` as an absolute path outside the ELF
+   directory, producing `Could not read content from file`.
 
 ## Patches
 
@@ -18,8 +20,10 @@ Snes9x 2002 core statically linked.
 - `0002` updates RetroArch 1.22.2 for the current PS2DEV APIs.
 - `0003` enables `LOAD_WITHOUT_CORE_INFO` so content loads directly with the
   linked Snes9x 2002 core.
+- `0004` normalizes PS2 HostFS file and stat paths from `host:/path` to
+  `host:path`, the relative form accepted by NetherSX2.
 
-The HostFS workaround is limited to PS2 `host:` and does not change USB,
+The HostFS workarounds are limited to PS2 `host:` and do not change USB,
 memory-card or HDD browsing.
 
 ## Apply
@@ -33,5 +37,6 @@ repository and the official PS2DEV prebuilt toolchain.
 ## Device test
 
 Start with an uncompressed `.sfc` or `.smc` file on `host:`. The ROM
-should load directly without opening the Suggested Cores screen. Test ZIP
-loading separately after direct ROM loading is confirmed.
+should load directly without opening the Suggested Cores screen or showing
+`Could not read content from file`. Test ZIP loading separately after direct
+ROM loading is confirmed.
