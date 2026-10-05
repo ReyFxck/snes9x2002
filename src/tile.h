@@ -157,6 +157,9 @@ extern uint32 TileBlank;
 }
 
 #define RENDER_TILE_LARGE(PIXEL, FUNCTION) \
+{ \
+    const uint8 LargePixelZ1 = GFX.Z1; \
+    const uint8 LargePixelZ2 = GFX.Z2; \
     if (!(Tile & (V_FLIP | H_FLIP))) \
     { \
    if ((pixel = *(pCache + StartLine + StartPixel))) \
@@ -166,10 +169,10 @@ extern uint32 TileBlank;
        { \
           int z; \
       for (z = Pixels - 1; z >= 0; z--) \
-          if (GFX.Z1 > Depth [z]) \
+          if (LargePixelZ1 > Depth [z]) \
           { \
          sp [z] = FUNCTION(sp + z, pixel); \
-         Depth [z] = GFX.Z2; \
+         Depth [z] = LargePixelZ2; \
           }\
        } \
    } \
@@ -185,10 +188,10 @@ extern uint32 TileBlank;
        { \
           int z; \
       for (z = Pixels - 1; z >= 0; z--) \
-          if (GFX.Z1 > Depth [z]) \
+          if (LargePixelZ1 > Depth [z]) \
           { \
          sp [z] = FUNCTION(sp + z, pixel); \
-         Depth [z] = GFX.Z2; \
+         Depth [z] = LargePixelZ2; \
           }\
        } \
    } \
@@ -204,10 +207,10 @@ extern uint32 TileBlank;
        { \
           int z; \
       for (z = Pixels - 1; z >= 0; z--) \
-          if (GFX.Z1 > Depth [z]) \
+          if (LargePixelZ1 > Depth [z]) \
           { \
          sp [z] = FUNCTION(sp + z, pixel); \
-         Depth [z] = GFX.Z2; \
+         Depth [z] = LargePixelZ2; \
           }\
        } \
    } \
@@ -221,14 +224,15 @@ extern uint32 TileBlank;
        { \
           int z; \
       for (z = Pixels - 1; z >= 0; z--) \
-          if (GFX.Z1 > Depth [z]) \
+          if (LargePixelZ1 > Depth [z]) \
           { \
          sp [z] = FUNCTION(sp + z, pixel); \
-         Depth [z] = GFX.Z2; \
+         Depth [z] = LargePixelZ2; \
           }\
        } \
    } \
-    }
+    } \
+}
 
 #define RENDER_TILEHI(NORMAL, FLIPPED, N) \
     if (!(Tile & (V_FLIP | H_FLIP))) \
