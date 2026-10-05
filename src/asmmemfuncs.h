@@ -209,9 +209,47 @@
  * as a fallback for the ARM routines above when the requested 16/32-bit
  * value is non-zero (the renderer uses memset32() for packed colours).
  */
-static __inline__ void *s9x_memset32(void *dst, uint32_t value, size_t count)
+#if defined(PS2) && defined(__GNUC__)
+/* Keep the R5900 loop out of line: this helper has many scanline call sites,
+ * and duplicating it costs more instruction cache than a function call. */
+static __attribute__((noinline, noclone))
+#else
+static __inline__
+#endif
+void *s9x_memset32(void *dst, uint32_t value, size_t count)
 {
    uint32_t *out = (uint32_t *)dst;
+
+#if defined(PS2) && defined(__GNUC__)
+   while (count && ((uintptr_t)out & 15u))
+   {
+      *out++ = value;
+      count--;
+   }
+
+   if (count >= 4)
+   {
+      uint64_t packed = ((uint64_t)value << 32) | value;
+      size_t blocks = count >> 2;
+
+      count &= 3;
+      __asm__ __volatile__ (
+         ".set   push\n"
+         ".set   noreorder\n"
+         "pcpyld %[packed], %[packed], %[packed]\n"
+         "1:\n"
+         "sq     %[packed], 0(%[out])\n"
+         "addiu  %[blocks], %[blocks], -1\n"
+         "bnez   %[blocks], 1b\n"
+         "addiu  %[out], %[out], 16\n"
+         ".set   pop\n"
+         : [out] "+&r" (out), [blocks] "+&r" (blocks),
+           [packed] "+&r" (packed)
+         :
+         : "memory"
+      );
+   }
+#endif
 
    while (count--)
       *out++ = value;
