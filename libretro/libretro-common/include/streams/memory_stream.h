@@ -32,6 +32,26 @@ RETRO_BEGIN_DECLS
 
 typedef struct memstream memstream_t;
 
+/*
+ * RetroArch also exports memstream_* symbols, but its bundled implementation
+ * may use a different API. A statically linked PS2 core must therefore keep
+ * its private memory-stream implementation under unique symbol names.
+ */
+#if defined(PS2)
+#define memstream_open      s9x2002_memstream_open
+#define memstream_close     s9x2002_memstream_close
+#define memstream_read      s9x2002_memstream_read
+#define memstream_write     s9x2002_memstream_write
+#define memstream_getc      s9x2002_memstream_getc
+#define memstream_putc      s9x2002_memstream_putc
+#define memstream_gets      s9x2002_memstream_gets
+#define memstream_pos       s9x2002_memstream_pos
+#define memstream_get_size  s9x2002_memstream_get_size
+#define memstream_rewind    s9x2002_memstream_rewind
+#define memstream_seek      s9x2002_memstream_seek
+#define memstream_get_ptr   s9x2002_memstream_get_ptr
+#endif
+
 memstream_t *memstream_open(uint8_t *data, uint64_t size, unsigned writing);
 
 void memstream_close(memstream_t *stream);
