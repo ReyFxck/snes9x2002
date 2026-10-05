@@ -3576,10 +3576,10 @@ void S9xUpdateScreen(void)  // ~30-50ms! (called from FLUSH_REDRAW())
       if (!(Memory.FillRAM [0x2131] & 0x80) && (Memory.FillRAM[0x2131] & 0x20) &&
             (PPU.FixedColourRed || PPU.FixedColourGreen || PPU.FixedColourBlue))
       {
-         back = (IPPU.XB[PPU.FixedColourRed] << 11) |
-                (IPPU.XB[PPU.FixedColourGreen] << 6) |
-                (IPPU.XB[PPU.FixedColourBlue] << 1) | 1;
-         back = (back << 16) | back;
+         uint32 back_pixel = BUILD_PIXEL(IPPU.XB[PPU.FixedColourRed],
+                                         IPPU.XB[PPU.FixedColourGreen],
+                                         IPPU.XB[PPU.FixedColourBlue]);
+         back = (back_pixel << 16) | back_pixel;
       }
       else
          back = IPPU.ScreenColors [0] | (IPPU.ScreenColors [0] << 16);
