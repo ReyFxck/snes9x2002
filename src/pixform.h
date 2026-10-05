@@ -104,7 +104,7 @@ extern uint32 HIGH_BITS_SHIFTED_TWO_MASK;
 #define BUILD_PIXEL_BGR555(R,G,B) (((int) (B) << 10) | ((int) (G) << 5) | (int) (R))
 #define BUILD_PIXEL2_BGR555(R,G,B) (((int) (B) << 10) | ((int) (G) << 5) | (int) (R))
 #define DECOMPOSE_PIXEL_BGR555(PIX,R,G,B) {(B) = (PIX) >> 10; (G) = ((PIX) >> 5) & 0x1f; (R) = (PIX) & 0x1f; }
-#define SPARE_RGB_BIT_MASK_BGR555 (1 << 5)
+#define SPARE_RGB_BIT_MASK_BGR555 (1 << 15)
 
 #define MAX_RED_BGR555            31
 #define MAX_GREEN_BGR555          31
