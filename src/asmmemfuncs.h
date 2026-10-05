@@ -204,8 +204,33 @@
     ); _dst; \
 })
 #else
-#define memset32(_dst, _c, _count) memset(_dst, _c, (_count)<<2)
-#define memset16(_dst, _c, _count) memset(_dst, _c, (_count)<<1)
+/*
+ * memset() repeats the low byte of its value argument.  It cannot be used
+ * as a fallback for the ARM routines above when the requested 16/32-bit
+ * value is non-zero (the renderer uses memset32() for packed colours).
+ */
+static __inline__ void *s9x_memset32(void *dst, uint32_t value, size_t count)
+{
+   uint32_t *out = (uint32_t *)dst;
+
+   while (count--)
+      *out++ = value;
+
+   return dst;
+}
+
+static __inline__ void *s9x_memset16(void *dst, uint16_t value, size_t count)
+{
+   uint16_t *out = (uint16_t *)dst;
+
+   while (count--)
+      *out++ = value;
+
+   return dst;
+}
+
+#define memset32(_dst, _c, _count) s9x_memset32((_dst), (_c), (_count))
+#define memset16(_dst, _c, _count) s9x_memset16((_dst), (_c), (_count))
 #define memcpy32(_dst, _src, _count) memcpy(_dst, _src, (_count)<<2)
 #define memcpy16(_dst, _src, _count) memcpy(_dst, _src, (_count)<<1)
 #endif
