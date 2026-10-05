@@ -426,17 +426,20 @@ void DrawLargePixel(uint32 Tile, int32 Offset,
    RENDER_TILE_LARGE(((uint8) GFX.ScreenColors [pixel]), PLOT_PIXEL)
 }
 
-static INLINE void WRITE_4PIXELS16(int32 Offset, uint8* Pixels)
+static INLINE void WRITE_4PIXELS16(int32 Offset, uint8* Pixels,
+                                   uint16* ScreenBase, uint8* DepthBase,
+                                   const uint32* ScreenColors,
+                                   uint8 Z1, uint8 Z2)
 {
    uint32 Pixel;
-   uint16* Screen = (uint16*) GFX.S + Offset;
-   uint8*  Depth = GFX.DB + Offset;
+   uint16* Screen = ScreenBase + Offset;
+   uint8*  Depth = DepthBase + Offset;
 
 #define FN(N) \
-    if (GFX.Z1 > Depth [N] && (Pixel = Pixels[N])) \
+    if (Z1 > Depth [N] && (Pixel = Pixels[N])) \
     { \
-   Screen [N] = GFX.ScreenColors [Pixel]; \
-   Depth [N] = GFX.Z2; \
+   Screen [N] = ScreenColors [Pixel]; \
+   Depth [N] = Z2; \
     }
 
    FN(0)
@@ -446,17 +449,21 @@ static INLINE void WRITE_4PIXELS16(int32 Offset, uint8* Pixels)
 #undef FN
 }
 
-static INLINE void WRITE_4PIXELS16_FLIPPED(int32 Offset, uint8* Pixels)
+static INLINE void WRITE_4PIXELS16_FLIPPED(int32 Offset, uint8* Pixels,
+                                           uint16* ScreenBase,
+                                           uint8* DepthBase,
+                                           const uint32* ScreenColors,
+                                           uint8 Z1, uint8 Z2)
 {
    uint32 Pixel;
-   uint16* Screen = (uint16*) GFX.S + Offset;
-   uint8*  Depth = GFX.DB + Offset;
+   uint16* Screen = ScreenBase + Offset;
+   uint8*  Depth = DepthBase + Offset;
 
 #define FN(N) \
-    if (GFX.Z1 > Depth [N] && (Pixel = Pixels[3 - N])) \
+    if (Z1 > Depth [N] && (Pixel = Pixels[3 - N])) \
     { \
-   Screen [N] = GFX.ScreenColors [Pixel]; \
-   Depth [N] = GFX.Z2; \
+   Screen [N] = ScreenColors [Pixel]; \
+   Depth [N] = Z2; \
     }
 
    FN(0)
@@ -465,6 +472,13 @@ static INLINE void WRITE_4PIXELS16_FLIPPED(int32 Offset, uint8* Pixels)
    FN(3)
 #undef FN
 }
+
+#define WRITE_4PIXELS16_CACHED(Offset, Pixels) \
+   WRITE_4PIXELS16((Offset), (Pixels), screenBase, depthBase, \
+                   screenColors, z1, z2)
+#define WRITE_4PIXELS16_FLIPPED_CACHED(Offset, Pixels) \
+   WRITE_4PIXELS16_FLIPPED((Offset), (Pixels), screenBase, depthBase, \
+                           screenColors, z1, z2)
 
 static INLINE void WRITE_4PIXELS16x2(int32 Offset, uint8* Pixels)
 {
@@ -553,6 +567,11 @@ static INLINE void WRITE_4PIXELS16_FLIPPEDx2x2(int32 Offset, uint8* Pixels)
 void DrawTile16(uint32 Tile, int32 Offset, uint32 StartLine, uint32 LineCount)
 {
    uint8*  bp;
+   uint16* screenBase;
+   uint8* depthBase;
+   const uint32* screenColors;
+   uint8 z1;
+   uint8 z2;
 #if 1
    TILE_PREAMBLE
 #else
@@ -587,7 +606,13 @@ void DrawTile16(uint32 Tile, int32 Offset, uint32 StartLine, uint32 LineCount)
 
    uint32 l;
 #endif
-   RENDER_TILE(WRITE_4PIXELS16, WRITE_4PIXELS16_FLIPPED, 4)
+   screenBase = (uint16*) GFX.S;
+   depthBase = GFX.DB;
+   screenColors = GFX.ScreenColors;
+   z1 = GFX.Z1;
+   z2 = GFX.Z2;
+   RENDER_TILE(WRITE_4PIXELS16_CACHED,
+               WRITE_4PIXELS16_FLIPPED_CACHED, 4)
 }
 
 void DrawClippedTile16(uint32 Tile, int32 Offset,
@@ -596,10 +621,24 @@ void DrawClippedTile16(uint32 Tile, int32 Offset,
 {
    uint8* bp;
    uint32 dd, d1, d2;
+   uint16* screenBase;
+   uint8* depthBase;
+   const uint32* screenColors;
+   uint8 z1;
+   uint8 z2;
    TILE_PREAMBLE
    TILE_CLIP_PREAMBLE
-   RENDER_CLIPPED_TILE(WRITE_4PIXELS16, WRITE_4PIXELS16_FLIPPED, 4)
+   screenBase = (uint16*) GFX.S;
+   depthBase = GFX.DB;
+   screenColors = GFX.ScreenColors;
+   z1 = GFX.Z1;
+   z2 = GFX.Z2;
+   RENDER_CLIPPED_TILE(WRITE_4PIXELS16_CACHED,
+                       WRITE_4PIXELS16_FLIPPED_CACHED, 4)
 }
+
+#undef WRITE_4PIXELS16_CACHED
+#undef WRITE_4PIXELS16_FLIPPED_CACHED
 
 void DrawTile16x2(uint32 Tile, int32 Offset, uint32 StartLine,
                   uint32 LineCount)
