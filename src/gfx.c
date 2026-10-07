@@ -2251,12 +2251,12 @@ static INLINE void DrawBackground(uint32 BGMode, uint32 bg, uint8 Z1, uint8 Z2)
        if (!PPU.Mode7Repeat) \
        { \
           int x; \
-      for (x = startx; x != endx; x += dir, AA += aa, CC += cc, p++) \
+          uint32 A = AA + BB; \
+          uint32 C = CC + DD; \
+      for (x = startx; x != endx; x += dir, A += aa, C += cc, p++) \
       { \
-         int X = ((AA + BB) >> 8) & 0x3ff; \
-         int Y = ((CC + DD) >> 8) & 0x3ff; \
-          uint8 *TileData = VRAM1 + (VRAM[((Y & ~7) << 5) + ((X >> 2) & ~1)] << 7); \
-          uint32 b = *(TileData + ((Y & 7) << 4) + ((X & 7) << 1)); \
+          uint32 Tile = VRAM [((C >> 3) & 0x7f00) | ((A >> 10) & 0xfe)]; \
+          uint32 b = VRAM1 [(Tile << 7) | ((C >> 4) & 0x70) | ((A >> 7) & 0x0e)]; \
           if (b) \
           { \
             *p = (FUNC); \
@@ -2400,16 +2400,19 @@ static INLINE void DrawBackground(uint32 BGMode, uint32 bg, uint8 Z1, uint8 Z2)
        if (!PPU.Mode7Repeat) \
        { \
           int x; \
-      for (x = startx; x != endx; x += dir, AA += aa, CC += cc, p++, d++) \
+          uint32 A = AA + BB; \
+          uint32 C = CC + DD; \
+      for (x = startx; x != endx; x += dir, A += aa, C += cc, p++, d++) \
       { \
-          int X = ((AA + BB) >> 8) & 0x3ff; \
-          int Y = ((CC + DD) >> 8) & 0x3ff; \
-          uint8 *TileData = VRAM1 + (VRAM[((Y & ~7) << 5) + ((X >> 2) & ~1)] << 7); \
-          uint32 b = *(TileData + ((Y & 7) << 4) + ((X & 7) << 1)); \
-         if (DEPTH > *d && (b) ) \
+         if (DEPTH > *d) \
           { \
-            *p = (FUNC); \
-            *d = DEPTH; \
+            uint32 Tile = VRAM [((C >> 3) & 0x7f00) | ((A >> 10) & 0xfe)]; \
+            uint32 b = VRAM1 [(Tile << 7) | ((C >> 4) & 0x70) | ((A >> 7) & 0x0e)]; \
+            if (b) \
+            { \
+               *p = (FUNC); \
+               *d = DEPTH; \
+            } \
           } \
       } \
        } \
@@ -2556,12 +2559,12 @@ static INLINE void DrawBackground(uint32 BGMode, uint32 bg, uint8 Z1, uint8 Z2)
        if (!PPU.Mode7Repeat) \
        { \
           int x; \
-      for (x = startx; x != endx; x += dir, AA += aa, CC += cc, p++, d++) \
+          uint32 A = AA + BB; \
+          uint32 C = CC + DD; \
+      for (x = startx; x != endx; x += dir, A += aa, C += cc, p++, d++) \
       { \
-          int X = ((AA + BB) >> 8) & 0x3ff; \
-          int Y = ((CC + DD) >> 8) & 0x3ff; \
-          uint8 *TileData = VRAM1 + (VRAM[((Y & ~7) << 5) + ((X >> 2) & ~1)] << 7); \
-          uint32 b = *(TileData + ((Y & 7) << 4) + ((X & 7) << 1)); \
+          uint32 Tile = VRAM [((C >> 3) & 0x7f00) | ((A >> 10) & 0xfe)]; \
+          uint32 b = VRAM1 [(Tile << 7) | ((C >> 4) & 0x70) | ((A >> 7) & 0x0e)]; \
           GFX.Z1 = Mode7Depths [(b & 0x80) >> 7]; \
           if (GFX.Z1 > *d && (b & 0x7f) ) \
           { \
