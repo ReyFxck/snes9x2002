@@ -837,64 +837,33 @@ void DrawOBJS(bool8_32 OnMain, uint8 D)
 
    for (S = GFX.OBJList [I++]; S >= 0; S = GFX.OBJList [I++])
    {
-      const SOBJ *Obj = &PPU.OBJ[S];
-      NormalTileRenderer drawTile;
-      ClippedTileRenderer drawClippedTile;
       int clipcount;
       int clip, Offset;
       int VPos = GFX.VPositions [S];
       int Size = GFX.Sizes[S];
-      int HPos = Obj->HPos;
       int TileInc = 1;
 
       if (VPos + Size <= (int) GFX.StartY || VPos > (int) GFX.EndY)
          continue;
 
       if (OnMain && SUB_OR_ADD(4))
-         SelectTileRenderer(!GFX.Pseudo && Obj->Palette < 4, false);
+         SelectTileRenderer(!GFX.Pseudo && PPU.OBJ [S].Palette < 4, false);
 
-      drawTile = DrawTilePtr;
-      drawClippedTile = DrawClippedTilePtr;
+      BaseTile = PPU.OBJ[S].Name | (PPU.OBJ[S].Palette << 10);
 
-      BaseTile = Obj->Name | (Obj->Palette << 10);
-
-      if (Obj->HFlip)
+      if (PPU.OBJ[S].HFlip)
       {
          BaseTile += ((Size >> 3) - 1) | H_FLIP;
          TileInc = -1;
       }
-      if (Obj->VFlip)
+      if (PPU.OBJ[S].VFlip)
          BaseTile |= V_FLIP;
 
       clipcount = GFX.pCurrentClip->Count [4];
       if (!clipcount)
          clipcount = 1;
 
-      GFX.Z2 = (Obj->Priority + 1) * 4 + D;
-
-      /* Large, fully visible objects do not need per-row clipping setup. */
-      if (Size >= 32 && !GFX.pCurrentClip->Count [4] && HPos >= 0 &&
-            HPos + Size <= 256 && VPos >= (int) GFX.StartY &&
-            VPos + Size - 1 <= (int) GFX.EndY)
-      {
-         int X, Y;
-         int Middle = Size >> 3;
-         uint32 RowOffset = VPos * GFX_PPL + HPos * GFX_PIXSIZE;
-
-         for (Y = 0; Y < Size; Y += 8, RowOffset += 8 * GFX_PPL)
-         {
-            O = RowOffset;
-            if (!Obj->VFlip)
-               Tile = BaseTile + (Y << 1);
-            else
-               Tile = BaseTile + ((Size - Y - 8) << 1);
-
-            for (X = 0; X < Middle; X++, O += 8 * GFX_PIXSIZE,
-                  Tile += TileInc)
-               (*drawTile)(Tile, O, 0, 8);
-         }
-         continue;
-      }
+      GFX.Z2 = (PPU.OBJ[S].Priority + 1) * 4 + D;
 
       for (clip = 0; clip < clipcount; clip++)
       {
@@ -910,7 +879,8 @@ void DrawOBJS(bool8_32 OnMain, uint8 D)
             Right = GFX.pCurrentClip->Right [clip][4];
          }
 
-         if (Right <= Left || HPos + Size <= Left || HPos >= Right)
+         if (Right <= Left || PPU.OBJ[S].HPos + Size <= Left ||
+               PPU.OBJ[S].HPos >= Right)
             continue;
 
          for (Y = 0; Y < Size; Y += 8)
@@ -940,18 +910,18 @@ void DrawOBJS(bool8_32 OnMain, uint8 D)
 
                TileLine = StartLine << 3;
                O = (VPos + Y + StartLine) * GFX_PPL;
-               if (!Obj->VFlip)
+               if (!PPU.OBJ[S].VFlip)
                   Tile = BaseTile + (Y << 1);
                else
                   Tile = BaseTile + ((Size - Y - 8) << 1);
 
                Middle = Size >> 3;
-               if (HPos < Left)
+               if (PPU.OBJ[S].HPos < Left)
                {
-                  Tile += ((Left - HPos) >> 3) * TileInc;
-                  Middle -= (Left - HPos) >> 3;
+                  Tile += ((Left - PPU.OBJ[S].HPos) >> 3) * TileInc;
+                  Middle -= (Left - PPU.OBJ[S].HPos) >> 3;
                   O += Left * GFX_PIXSIZE;
-                  if ((Offset = (Left - HPos) & 7))
+                  if ((Offset = (Left - PPU.OBJ[S].HPos) & 7))
                   {
                      int W, Width;
 
@@ -960,8 +930,8 @@ void DrawOBJS(bool8_32 OnMain, uint8 D)
                      Width = Right - Left;
                      if (W > Width)
                         W = Width;
-                     (*drawClippedTile)(Tile, O, Offset, W,
-                                        TileLine, LineCount);
+                     (*DrawClippedTilePtr)(Tile, O, Offset, W,
+                                           TileLine, LineCount);
 
                      if (W >= Width)
                         continue;
@@ -971,22 +941,23 @@ void DrawOBJS(bool8_32 OnMain, uint8 D)
                   }
                }
                else
-                  O += HPos * GFX_PIXSIZE;
+                  O += PPU.OBJ[S].HPos * GFX_PIXSIZE;
 
-               if (HPos + Size >= Right)
+               if (PPU.OBJ[S].HPos + Size >= Right)
                {
-                  Middle -= ((HPos + Size + 7) - Right) >> 3;
-                  Offset = (Right - (HPos + Size)) & 7;
+                  Middle -= ((PPU.OBJ[S].HPos + Size + 7) -
+                             Right) >> 3;
+                  Offset = (Right - (PPU.OBJ[S].HPos + Size)) & 7;
                }
                else
                   Offset = 0;
 
                for (X = 0; X < Middle; X++, O += 8 * GFX_PIXSIZE,
                      Tile += TileInc)
-                  (*drawTile)(Tile, O, TileLine, LineCount);
+                  (*DrawTilePtr)(Tile, O, TileLine, LineCount);
                if (Offset)
-                  (*drawClippedTile)(Tile, O, 0, Offset,
-                                     TileLine, LineCount);
+                  (*DrawClippedTilePtr)(Tile, O, 0, Offset,
+                                        TileLine, LineCount);
             }
          }
       }
