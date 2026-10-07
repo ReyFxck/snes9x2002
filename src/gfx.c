@@ -2167,7 +2167,9 @@ static INLINE void DrawBackground(uint32 BGMode, uint32 bg, uint8 Z1, uint8 Z2)
     uint32 clip, Line; \
     uint32 ClipCount; \
     SLineMatrixData *l; \
-    uint8 *VRAM1 = Memory.VRAM + 1; \
+    uint8 *VRAM; \
+    uint8 *VRAM1; \
+    uint32 *ScreenColors; \
     if (GFX.r2130 & 1) \
     { \
       if (IPPU.DirectColourMapsNeedRebuild) \
@@ -2176,6 +2178,9 @@ static INLINE void DrawBackground(uint32 BGMode, uint32 bg, uint8 Z1, uint8 Z2)
     } \
     else \
       GFX.ScreenColors = IPPU.ScreenColors; \
+    VRAM = Memory.VRAM; \
+    VRAM1 = VRAM + 1; \
+    ScreenColors = GFX.ScreenColors; \
 \
     ClipCount = GFX.pCurrentClip->Count [bg]; \
     if (!ClipCount) \
@@ -2250,7 +2255,7 @@ static INLINE void DrawBackground(uint32 BGMode, uint32 bg, uint8 Z1, uint8 Z2)
       { \
          int X = ((AA + BB) >> 8) & 0x3ff; \
          int Y = ((CC + DD) >> 8) & 0x3ff; \
-          uint8 *TileData = VRAM1 + (Memory.VRAM[((Y & ~7) << 5) + ((X >> 2) & ~1)] << 7); \
+          uint8 *TileData = VRAM1 + (VRAM[((Y & ~7) << 5) + ((X >> 2) & ~1)] << 7); \
           uint32 b = *(TileData + ((Y & 7) << 4) + ((X & 7) << 1)); \
           if (b) \
           { \
@@ -2274,7 +2279,7 @@ static INLINE void DrawBackground(uint32 BGMode, uint32 bg, uint8 Z1, uint8 Z2)
 \
           if (((X | Y) & ~0x3ff) == 0) \
           { \
-            uint8 *TileData = VRAM1 + (Memory.VRAM[((Y & ~7) << 5) + ((X >> 2) & ~1)] << 7); \
+            uint8 *TileData = VRAM1 + (VRAM[((Y & ~7) << 5) + ((X >> 2) & ~1)] << 7); \
             uint32 b = *(TileData + ((Y & 7) << 4) + ((X & 7) << 1)); \
             if (b) \
                *p = (FUNC); \
@@ -2303,7 +2308,9 @@ static INLINE void DrawBackground(uint32 BGMode, uint32 bg, uint8 Z1, uint8 Z2)
     uint32 Left = 0; \
     uint32 Right = 256; \
    uint32 clip, Line; \
-    uint8 *VRAM1 = Memory.VRAM + 1; \
+    uint8 *VRAM; \
+    uint8 *VRAM1; \
+    uint32 *ScreenColors; \
     uint32 ClipCount; \
     uint8 *Depth; \
     SLineMatrixData *l; \
@@ -2315,6 +2322,9 @@ static INLINE void DrawBackground(uint32 BGMode, uint32 bg, uint8 Z1, uint8 Z2)
     } \
     else \
       GFX.ScreenColors = IPPU.ScreenColors; \
+    VRAM = Memory.VRAM; \
+    VRAM1 = VRAM + 1; \
+    ScreenColors = GFX.ScreenColors; \
 \
     ClipCount = GFX.pCurrentClip->Count [bg]; \
 \
@@ -2394,7 +2404,7 @@ static INLINE void DrawBackground(uint32 BGMode, uint32 bg, uint8 Z1, uint8 Z2)
       { \
           int X = ((AA + BB) >> 8) & 0x3ff; \
           int Y = ((CC + DD) >> 8) & 0x3ff; \
-          uint8 *TileData = VRAM1 + (Memory.VRAM[((Y & ~7) << 5) + ((X >> 2) & ~1)] << 7); \
+          uint8 *TileData = VRAM1 + (VRAM[((Y & ~7) << 5) + ((X >> 2) & ~1)] << 7); \
           uint32 b = *(TileData + ((Y & 7) << 4) + ((X & 7) << 1)); \
          if (DEPTH > *d && (b) ) \
           { \
@@ -2419,7 +2429,7 @@ static INLINE void DrawBackground(uint32 BGMode, uint32 bg, uint8 Z1, uint8 Z2)
 \
           if (((X | Y) & ~0x3ff) == 0) \
           { \
-            uint8 *TileData = VRAM1 + (Memory.VRAM[((Y & ~7) << 5) + ((X >> 2) & ~1)] << 7); \
+            uint8 *TileData = VRAM1 + (VRAM[((Y & ~7) << 5) + ((X >> 2) & ~1)] << 7); \
             uint32 b = *(TileData + ((Y & 7) << 4) + ((X & 7) << 1)); \
             if (DEPTH > *d && (b) ) \
             { \
@@ -2457,7 +2467,9 @@ static INLINE void DrawBackground(uint32 BGMode, uint32 bg, uint8 Z1, uint8 Z2)
    uint32 clip, Line; \
    uint32 ClipCount; \
    uint8 *Depth; \
-    uint8 *VRAM1 = Memory.VRAM + 1; \
+    uint8 *VRAM; \
+    uint8 *VRAM1; \
+    uint32 *ScreenColors; \
     if (GFX.r2130 & 1) \
     { \
       if (IPPU.DirectColourMapsNeedRebuild) \
@@ -2466,6 +2478,9 @@ static INLINE void DrawBackground(uint32 BGMode, uint32 bg, uint8 Z1, uint8 Z2)
     } \
     else \
       GFX.ScreenColors = IPPU.ScreenColors; \
+    VRAM = Memory.VRAM; \
+    VRAM1 = VRAM + 1; \
+    ScreenColors = GFX.ScreenColors; \
 \
     ClipCount = GFX.pCurrentClip->Count [bg]; \
 \
@@ -2545,7 +2560,7 @@ static INLINE void DrawBackground(uint32 BGMode, uint32 bg, uint8 Z1, uint8 Z2)
       { \
           int X = ((AA + BB) >> 8) & 0x3ff; \
           int Y = ((CC + DD) >> 8) & 0x3ff; \
-          uint8 *TileData = VRAM1 + (Memory.VRAM[((Y & ~7) << 5) + ((X >> 2) & ~1)] << 7); \
+          uint8 *TileData = VRAM1 + (VRAM[((Y & ~7) << 5) + ((X >> 2) & ~1)] << 7); \
           uint32 b = *(TileData + ((Y & 7) << 4) + ((X & 7) << 1)); \
           GFX.Z1 = Mode7Depths [(b & 0x80) >> 7]; \
           if (GFX.Z1 > *d && (b & 0x7f) ) \
@@ -2571,7 +2586,7 @@ static INLINE void DrawBackground(uint32 BGMode, uint32 bg, uint8 Z1, uint8 Z2)
 \
           if (((X | Y) & ~0x3ff) == 0) \
           { \
-            uint8 *TileData = VRAM1 + (Memory.VRAM[((Y & ~7) << 5) + ((X >> 2) & ~1)] << 7); \
+            uint8 *TileData = VRAM1 + (VRAM[((Y & ~7) << 5) + ((X >> 2) & ~1)] << 7); \
             uint32 b = *(TileData + ((Y & 7) << 4) + ((X & 7) << 1)); \
             GFX.Z1 = Mode7Depths [(b & 0x80) >> 7]; \
          if (GFX.Z1 > *d && (b & 0x7f) ) \
@@ -2603,23 +2618,23 @@ static INLINE void DrawBackground(uint32 BGMode, uint32 bg, uint8 Z1, uint8 Z2)
 
 void DrawBGMode7Background16New(uint8* Screen, int bg)
 {
-   RENDER_BACKGROUND_MODE7(GFX.ScreenColors [b & 0xff]);
+   RENDER_BACKGROUND_MODE7(ScreenColors [b & 0xff]);
 }
 
 void DrawBGMode7Background16(uint8* Screen, int bg, int depth)
 {
-   RENDER_BACKGROUND_MODE7ADDSUB(depth, GFX.ScreenColors [b & 0xff]);
+   RENDER_BACKGROUND_MODE7ADDSUB(depth, ScreenColors [b & 0xff]);
 }
 
 void DrawBGMode7Background16Add(uint8* Screen, int bg, int depth)
 {
    RENDER_BACKGROUND_MODE7ADDSUB(depth, *(d + GFX.DepthDelta) ?
                                  (*(d + GFX.DepthDelta) != 1 ?
-                                  COLOR_ADD(GFX.ScreenColors [b & 0xff],
+                                  COLOR_ADD(ScreenColors [b & 0xff],
                                         p [GFX.Delta]) :
-                                  COLOR_ADD(GFX.ScreenColors [b & 0xff],
+                                  COLOR_ADD(ScreenColors [b & 0xff],
                                         GFX.FixedColour)) :
-                                 GFX.ScreenColors [b & 0xff]);
+                                 ScreenColors [b & 0xff]);
 
 }
 
@@ -2627,82 +2642,82 @@ void DrawBGMode7Background16Add1_2(uint8* Screen, int bg, int depth)
 {
    RENDER_BACKGROUND_MODE7ADDSUB(depth, *(d + GFX.DepthDelta) ?
                                  (*(d + GFX.DepthDelta) != 1 ?
-                                  COLOR_ADD1_2(GFX.ScreenColors [b & 0xff],
+                                  COLOR_ADD1_2(ScreenColors [b & 0xff],
                                         p [GFX.Delta]) :
-                                  COLOR_ADD(GFX.ScreenColors [b & 0xff],
+                                  COLOR_ADD(ScreenColors [b & 0xff],
                                         GFX.FixedColour)) :
-                                 GFX.ScreenColors [b & 0xff]);
+                                 ScreenColors [b & 0xff]);
 }
 
 void DrawBGMode7Background16Sub(uint8* Screen, int bg, int depth)
 {
    RENDER_BACKGROUND_MODE7ADDSUB(depth, *(d + GFX.DepthDelta) ?
                                  (*(d + GFX.DepthDelta) != 1 ?
-                                  COLOR_SUB(GFX.ScreenColors [b & 0xff],
+                                  COLOR_SUB(ScreenColors [b & 0xff],
                                         p [GFX.Delta]) :
-                                  COLOR_SUB(GFX.ScreenColors [b & 0xff],
+                                  COLOR_SUB(ScreenColors [b & 0xff],
                                         GFX.FixedColour)) :
-                                 GFX.ScreenColors [b & 0xff]);
+                                 ScreenColors [b & 0xff]);
 }
 
 void DrawBGMode7Background16Sub1_2(uint8* Screen, int bg, int depth)
 {
    RENDER_BACKGROUND_MODE7ADDSUB(depth, *(d + GFX.DepthDelta) ?
                                  (*(d + GFX.DepthDelta) != 1 ?
-                                  COLOR_SUB1_2(GFX.ScreenColors [b & 0xff],
+                                  COLOR_SUB1_2(ScreenColors [b & 0xff],
                                         p [GFX.Delta]) :
-                                  COLOR_SUB(GFX.ScreenColors [b & 0xff],
+                                  COLOR_SUB(ScreenColors [b & 0xff],
                                         GFX.FixedColour)) :
-                                 GFX.ScreenColors [b & 0xff]);
+                                 ScreenColors [b & 0xff]);
 }
 
 void DrawBGMode7Background16Prio(uint8* Screen, int bg)
 {
-   RENDER_BACKGROUND_MODE7PRIO(GFX.ScreenColors [b & 0x7f]);
+   RENDER_BACKGROUND_MODE7PRIO(ScreenColors [b & 0x7f]);
 }
 
 void DrawBGMode7Background16AddPrio(uint8* Screen, int bg)
 {
    RENDER_BACKGROUND_MODE7PRIO(*(d + GFX.DepthDelta) ?
                                (*(d + GFX.DepthDelta) != 1 ?
-                                COLOR_ADD(GFX.ScreenColors [b & 0x7f],
+                                COLOR_ADD(ScreenColors [b & 0x7f],
                                           p [GFX.Delta]) :
-                                COLOR_ADD(GFX.ScreenColors [b & 0x7f],
+                                COLOR_ADD(ScreenColors [b & 0x7f],
                                           GFX.FixedColour)) :
-                               GFX.ScreenColors [b & 0x7f]);
+                               ScreenColors [b & 0x7f]);
 }
 
 void DrawBGMode7Background16Add1_2Prio(uint8* Screen, int bg)
 {
    RENDER_BACKGROUND_MODE7PRIO(*(d + GFX.DepthDelta) ?
                                (*(d + GFX.DepthDelta) != 1 ?
-                                COLOR_ADD1_2(GFX.ScreenColors [b & 0x7f],
+                                COLOR_ADD1_2(ScreenColors [b & 0x7f],
                                       p [GFX.Delta]) :
-                                COLOR_ADD(GFX.ScreenColors [b & 0x7f],
+                                COLOR_ADD(ScreenColors [b & 0x7f],
                                           GFX.FixedColour)) :
-                               GFX.ScreenColors [b & 0x7f]);
+                               ScreenColors [b & 0x7f]);
 }
 
 void DrawBGMode7Background16SubPrio(uint8* Screen, int bg)
 {
    RENDER_BACKGROUND_MODE7PRIO(*(d + GFX.DepthDelta) ?
                                (*(d + GFX.DepthDelta) != 1 ?
-                                COLOR_SUB(GFX.ScreenColors [b & 0x7f],
+                                COLOR_SUB(ScreenColors [b & 0x7f],
                                           p [GFX.Delta]) :
-                                COLOR_SUB(GFX.ScreenColors [b & 0x7f],
+                                COLOR_SUB(ScreenColors [b & 0x7f],
                                           GFX.FixedColour)) :
-                               GFX.ScreenColors [b & 0x7f]);
+                               ScreenColors [b & 0x7f]);
 }
 
 void DrawBGMode7Background16Sub1_2Prio(uint8* Screen, int bg)
 {
    RENDER_BACKGROUND_MODE7PRIO(*(d + GFX.DepthDelta) ?
                                (*(d + GFX.DepthDelta) != 1 ?
-                                COLOR_SUB1_2(GFX.ScreenColors [b & 0x7f],
+                                COLOR_SUB1_2(ScreenColors [b & 0x7f],
                                       p [GFX.Delta]) :
-                                COLOR_SUB(GFX.ScreenColors [b & 0x7f],
+                                COLOR_SUB(ScreenColors [b & 0x7f],
                                           GFX.FixedColour)) :
-                               GFX.ScreenColors [b & 0x7f]);
+                               ScreenColors [b & 0x7f]);
 }
 
 #define _BUILD_SETUP(F) \
